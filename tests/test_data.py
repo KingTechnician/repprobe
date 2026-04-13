@@ -18,6 +18,11 @@ class TestRepDatasetConstruction:
         ds = RepDataset(hf_dataset=multiclass_hf_dataset)
         assert len(ds) == 300
 
+    def test_flat_dataset_is_not_dict(self, multiclass_hf_dataset):
+        ds = RepDataset(hf_dataset=multiclass_hf_dataset)
+        assert ds.is_dict is False
+        assert ds.splits == []
+
     def test_missing_both_args_raises(self):
         with pytest.raises(ValueError, match="Provide either"):
             RepDataset()

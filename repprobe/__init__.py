@@ -22,6 +22,7 @@ Quick start::
 from .calibration import calibrate_best_layer, multiclass_fisher_score
 from .data import RepDataset
 from .eval import compare_probes, evaluate_generalization, evaluate_probe, print_results
+from .extraction import generate_activations
 from .probes import CCSProbe, LDAProbe, LRProbe, MeanDiffProbe, ProbeFactory
 from .schema import LabelSchema
 
@@ -29,6 +30,8 @@ __all__ = [
     # Core data
     "RepDataset",
     "LabelSchema",
+    # Extraction
+    "generate_activations",
     # Probes
     "ProbeFactory",
     "LRProbe",
