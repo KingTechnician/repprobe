@@ -76,6 +76,8 @@ class RepDataset:
         *,
         hf_dataset: Optional[_DatasetInput] = None,
         default_split: Optional[str] = None,
+        text_col: str = "text",
+        label_col: str = "label",
     ) -> None:
         if hf_dataset is not None:
             raw = hf_dataset
@@ -85,6 +87,9 @@ class RepDataset:
             raise ValueError(
                 "Provide either dataset_name_or_path or hf_dataset keyword argument."
             )
+
+        # ── Rename custom columns to canonical names ────────────────────
+        raw = self._rename_columns(raw, text_col, label_col)
 
         # ── Normalise into _splits dict ────────────────────────────────
         if isinstance(raw, DatasetDict):
@@ -114,6 +119,43 @@ class RepDataset:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _rename_columns(
+        raw: _DatasetInput, text_col: str, label_col: str
+    ) -> _DatasetInput:
+        """Rename *text_col* → ``'text'`` and *label_col* → ``'label'`` in place.
+
+        Works transparently for both :class:`~datasets.Dataset` and
+        :class:`~datasets.DatasetDict` inputs.  If the columns are already
+        named ``'text'`` / ``'label'`` no renaming is performed.
+        """
+        rename_map: dict[str, str] = {}
+        if text_col != "text":
+            rename_map[text_col] = "text"
+        if label_col != "label":
+            rename_map[label_col] = "label"
+        if not rename_map:
+            return raw
+
+        if isinstance(raw, DatasetDict):
+            renamed: dict[str, Dataset] = {}
+            for name, ds in raw.items():
+                missing = [c for c in rename_map if c not in ds.column_names]
+                if missing:
+                    raise ValueError(
+                        f"Split '{name}' is missing required columns: {missing}. "
+                        f"Available columns: {ds.column_names}"
+                    )
+                renamed[name] = ds.rename_columns(rename_map)
+            return DatasetDict(renamed)
+        missing = [c for c in rename_map if c not in raw.column_names]
+        if missing:
+            raise ValueError(
+                f"The dataset is missing required columns: {missing}. "
+                f"Available columns: {raw.column_names}"
+            )
+        return raw.rename_columns(rename_map)
 
     @staticmethod
     def _load(name_or_path: str, split: Optional[str]) -> _DatasetInput:
@@ -338,6 +380,9 @@ class RepDataset:
         cls,
         dataset_dict: DatasetDict,
         default_split: Optional[str] = None,
+        *,
+        text_col: str = "text",
+        label_col: str = "label",
     ) -> "RepDataset":
         """
         Build a ``RepDataset`` from an existing :class:`~datasets.DatasetDict`.
@@ -345,12 +390,21 @@ class RepDataset:
         Parameters
         ----------
         dataset_dict : DatasetDict
-            Must have ``"text"`` and ``"label"`` columns in every split.
+            Must have columns matching *text_col* and *label_col* in every split.
         default_split : str | None
             Which split becomes the active split for ``get_acts`` /
             ``get_labels``.  Defaults to ``"train"`` when present.
+        text_col : str
+            Name of the text column (default ``"text"``).
+        label_col : str
+            Name of the label column (default ``"label"``).
         """
-        return cls(hf_dataset=dataset_dict, default_split=default_split)
+        return cls(
+            hf_dataset=dataset_dict,
+            default_split=default_split,
+            text_col=text_col,
+            label_col=label_col,
+        )
 
     @classmethod
     def from_csv(
