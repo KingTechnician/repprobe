@@ -15,18 +15,24 @@ import sys
 def _cmd_generate(args: argparse.Namespace) -> None:
     from datasets import load_dataset  # noqa: PLC0415
 
+    from .data import RepDataset  # noqa: PLC0415
     from .extraction import generate_activations  # noqa: PLC0415
 
     print(f"Loading dataset '{args.dataset}' ...")
-    ds_dict = load_dataset(args.dataset, trust_remote_code=True)
+    raw = load_dataset(args.dataset, trust_remote_code=True)
 
-    # Merge all splits or pick one
+    # Honour --split if given; otherwise pass the full DatasetDict through
     if args.split:
-        ds = ds_dict[args.split]
-    else:
-        from datasets import concatenate_datasets  # noqa: PLC0415
+        raw = raw[args.split]
 
-        ds = concatenate_datasets(list(ds_dict.values()))
+    # Wrap in RepDataset to handle column renaming before extraction
+    rds = RepDataset(
+        hf_dataset=raw,
+        text_col=args.text_col,
+        label_col=args.label_col,
+    )
+    # Unwrap back to Dataset / DatasetDict for generate_activations
+    ds = rds.hf_dataset_dict if rds.is_dict else rds.hf_dataset
 
     layers = [int(l) for l in args.layers]  # noqa: E741
 
@@ -43,7 +49,12 @@ def _cmd_generate(args: argparse.Namespace) -> None:
         push_to_hub=args.push_to_hub if args.push_to_hub else None,
         local_save_path=args.output_dir if args.output_dir else None,
     )
-    print(f"Done. Dataset has {len(result)} rows and columns: {result.column_names}")
+    if hasattr(result, "column_names"):
+        print(f"Done. Dataset has {len(result)} rows and columns: {result.column_names}")
+    else:
+        # DatasetDict result
+        total = sum(len(v) for v in result.values())
+        print(f"Done. DatasetDict with splits {list(result.keys())} ({total} total rows)")
 
 
 def _cmd_calibrate(args: argparse.Namespace) -> None:
@@ -120,6 +131,10 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--config", default=None, help="Path to config.ini")
     gen.add_argument("--push_to_hub", default=None, help="HF repo to push to")
     gen.add_argument("--output_dir", default=None, help="Local path to save dataset")
+    gen.add_argument("--text_col", default="text",
+                     help="Name of the text column in the source dataset (default: 'text')")
+    gen.add_argument("--label_col", default="label",
+                     help="Name of the label column in the source dataset (default: 'label')")
 
     # ── calibrate ─────────────────────────────────────────────────────
     cal = sub.add_parser("calibrate", help="Select best extraction layer")
